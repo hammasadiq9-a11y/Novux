@@ -16,43 +16,76 @@ export async function POST(req: NextRequest) {
       nonprofit: 'an inspiring nonprofit site that drives donations',
     }
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        max_tokens: 8000,
-        temperature: 0.7,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert web designer and developer. You create stunning, modern, Awwwards-quality websites. You only respond with complete HTML code, nothing else.'
-          },
-          {
-            role: 'user',
-            content: `Create a complete, beautiful, single-page HTML website for ${businessName}.
+    const response = await fetch(
+      `https://api.groq.com/openai/v1/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          max_tokens: 8000,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'system',
+              content: `You are a world class web designer and developer who creates stunning, award-winning websites. You have won multiple Awwwards and your work is featured in design magazines. You create websites that are:
+- Visually stunning with premium aesthetics
+- Conversion focused with clear call to actions
+- Fully responsive and mobile first
+- Fast loading with optimized code
+- Modern with smooth animations and interactions
+You ONLY respond with complete, working HTML code. Never add explanations or markdown.`
+            },
+            {
+              role: 'user',
+              content: `Create a stunning, Awwwards-quality single page website for ${businessName}.
 
-Business description: ${businessDescription || 'A professional business'}
-Template style: ${templatePrompts[template] || 'modern and professional'}
+Business: ${businessName}
+Description: ${businessDescription || 'A professional business'}
+Style: ${templatePrompts[template] || 'modern and professional'}
 
-Requirements:
-- Complete HTML file with inline CSS and JS
-- Awwwards-quality design
-- Dark theme with accent colors
-- Mobile responsive
-- Smooth animations
-- Modern typography using Google Fonts
-- Sections: Hero, About, Services/Features, Testimonials, Contact, Footer
-- Professional and conversion-focused
+DESIGN REQUIREMENTS:
+- Use Google Fonts — combine a serif display font with a clean sans-serif
+- Premium color palette — dark backgrounds (#0a0a0a, #111111) with ONE bold accent color
+- Large, bold hero section with an attention grabbing headline
+- Smooth CSS animations — fade ins, slide ups, parallax effects
+- Bento grid layout for services/features section
+- Glassmorphism cards with backdrop-filter blur
+- Magnetic hover effects on buttons
+- Custom cursor effect
+- Smooth scroll behavior
+- Micro interactions on all interactive elements
 
-Return ONLY the complete HTML code starting with <!DOCTYPE html>. Nothing else. No markdown, no backticks, just pure HTML.`
-          }
-        ]
-      })
-    })
+SECTIONS REQUIRED:
+1. Navigation — fixed, blur background on scroll, logo + links + CTA button
+2. Hero — full viewport height, bold headline, subheadline, two CTAs, animated background
+3. About — story section with stats/numbers
+4. Services/Features — bento grid layout with icons
+5. Process — how it works, numbered steps
+6. Testimonials — clean cards with ratings
+7. FAQ — accordion style
+8. Contact — form with modern styling
+9. Footer — links, social icons, copyright
+
+TECHNICAL REQUIREMENTS:
+- Single HTML file with all CSS and JS inline
+- CSS custom properties for design tokens
+- Intersection Observer for scroll animations
+- Smooth scroll with offset for fixed nav
+- Form validation with visual feedback
+- Mobile hamburger menu
+- All images replaced with beautiful CSS gradients or SVG illustrations
+- Optimized for 95+ Lighthouse score
+
+Return ONLY the complete HTML starting with <!DOCTYPE html>. Nothing else.`
+            }
+          ]
+        })
+      }
+    )
 
     if (!response.ok) {
       const error = await response.text()
@@ -63,7 +96,6 @@ Return ONLY the complete HTML code starting with <!DOCTYPE html>. Nothing else. 
     const data = await response.json()
     const html = data.choices[0].message.content
 
-    // Clean up any markdown backticks just in case
     const cleanHtml = html.replace(/```html/g, '').replace(/```/g, '').trim()
 
     return NextResponse.json({ html: cleanHtml })
