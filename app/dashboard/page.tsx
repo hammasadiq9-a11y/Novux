@@ -62,7 +62,10 @@ export default function Dashboard() {
 
         {/* Create New Project Card */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <button className="border-2 border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 hover:border-[#C8FF00]/50 hover:bg-[#C8FF00]/5 transition-all group">
+          <button
+            onClick={() => router.push('/templates')}
+            className="border-2 border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 hover:border-[#C8FF00]/50 hover:bg-[#C8FF00]/5 transition-all group"
+          >
             <div className="w-12 h-12 rounded-full bg-[#C8FF00]/10 flex items-center justify-center group-hover:bg-[#C8FF00]/20 transition-all">
               <span className="text-[#C8FF00] text-2xl font-bold">+</span>
             </div>
