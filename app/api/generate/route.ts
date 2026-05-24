@@ -1,107 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
+  const { businessName, businessDescription, template } = await req.json()
+
+  if (!businessName) {
+    return NextResponse.json({ error: 'businessName is required' }, { status: 400 })
+  }
+
+  const systemPrompt = `You are an elite web designer who builds Awwwards-winning websites.
+Your output is ALWAYS a single complete HTML file — no markdown, no explanation, no code fences.
+Just raw HTML starting with <!DOCTYPE html>.
+
+Rules you NEVER break:
+- Fully self-contained: all CSS and JS inline, zero external dependencies except Google Fonts
+- Mobile-first and fully responsive
+- Dark, premium aesthetic unless the business clearly calls for light
+- Unique layout — no generic hero/features/footer cookie-cutter patterns
+- Beautiful typography using Google Fonts (load via @import in <style>)
+- Smooth CSS animations and micro-interactions
+- Real, specific copy written for this exact business — never placeholder Lorem Ipsum
+- All sections filled with meaningful content: hero, about, services/products, testimonials, contact
+- Working contact form UI (no backend needed, just the form)
+- A distinct color palette that fits the business personality
+- The output must look like it cost $10,000 to build`
+
+  const userPrompt = `Build a complete website for this business:
+
+Business Name: ${businessName}
+Template Style: ${template}
+${businessDescription ? `About the Business: ${businessDescription}` : ''}
+
+Deliver only the raw HTML file. Start your response with <!DOCTYPE html> and nothing else.`
+
   try {
-    const { businessName, businessDescription, template } = await req.json()
-
-    const templatePrompts: Record<string, string> = {
-      agency: 'a modern creative agency with bold typography and dark aesthetic',
-      restaurant: 'an upscale restaurant with elegant design and warm colors',
-      portfolio: 'a minimal portfolio for a creative professional',
-      saas: 'a high converting SaaS landing page with clear CTAs',
-      ecommerce: 'a premium ecommerce store with clean product layouts',
-      blog: 'a modern blog with great typography and reading experience',
-      realestate: 'a luxury real estate agency with property listings',
-      startup: 'a bold startup landing page that drives signups',
-      nonprofit: 'an inspiring nonprofit site that drives donations',
-    }
-
-    const response = await fetch(
-      `https://api.groq.com/openai/v1/chat/completions`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          max_tokens: 8000,
-          temperature: 0.7,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a world class web designer and developer who creates stunning, award-winning websites. You have won multiple Awwwards and your work is featured in design magazines. You create websites that are:
-- Visually stunning with premium aesthetics
-- Conversion focused with clear call to actions
-- Fully responsive and mobile first
-- Fast loading with optimized code
-- Modern with smooth animations and interactions
-You ONLY respond with complete, working HTML code. Never add explanations or markdown.`
-            },
-            {
-              role: 'user',
-              content: `Create a stunning, Awwwards-quality single page website for ${businessName}.
-
-Business: ${businessName}
-Description: ${businessDescription || 'A professional business'}
-Style: ${templatePrompts[template] || 'modern and professional'}
-
-DESIGN REQUIREMENTS:
-- Use Google Fonts — combine a serif display font with a clean sans-serif
-- Premium color palette — dark backgrounds (#0a0a0a, #111111) with ONE bold accent color
-- Large, bold hero section with an attention grabbing headline
-- Smooth CSS animations — fade ins, slide ups, parallax effects
-- Bento grid layout for services/features section
-- Glassmorphism cards with backdrop-filter blur
-- Magnetic hover effects on buttons
-- Custom cursor effect
-- Smooth scroll behavior
-- Micro interactions on all interactive elements
-
-SECTIONS REQUIRED:
-1. Navigation — fixed, blur background on scroll, logo + links + CTA button
-2. Hero — full viewport height, bold headline, subheadline, two CTAs, animated background
-3. About — story section with stats/numbers
-4. Services/Features — bento grid layout with icons
-5. Process — how it works, numbered steps
-6. Testimonials — clean cards with ratings
-7. FAQ — accordion style
-8. Contact — form with modern styling
-9. Footer — links, social icons, copyright
-
-TECHNICAL REQUIREMENTS:
-- Single HTML file with all CSS and JS inline
-- CSS custom properties for design tokens
-- Intersection Observer for scroll animations
-- Smooth scroll with offset for fixed nav
-- Form validation with visual feedback
-- Mobile hamburger menu
-- All images replaced with beautiful CSS gradients or SVG illustrations
-- Optimized for 95+ Lighthouse score
-
-Return ONLY the complete HTML starting with <!DOCTYPE html>. Nothing else.`
-            }
-          ]
-        })
-      }
-    )
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    })
 
     if (!response.ok) {
-      const error = await response.text()
-      console.error('Groq API error:', error)
-      return NextResponse.json({ error: 'Failed to generate site' }, { status: 500 })
+      const err = await response.json()
+      console.error('Anthropic error:', err)
+      return NextResponse.json({ error: 'Generation failed', detail: err }, { status: 500 })
     }
 
     const data = await response.json()
-    const html = data.choices[0].message.content
+    const html = data.content?.[0]?.text ?? ''
+    const clean = html.replace(/^```html\n?/, '').replace(/\n?```$/, '').trim()
 
-    const cleanHtml = html.replace(/```html/g, '').replace(/```/g, '').trim()
-
-    return NextResponse.json({ html: cleanHtml })
-
-  } catch (error) {
-    console.error('Route error:', error)
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+    return NextResponse.json({ html: clean })
+  } catch (err) {
+    console.error('Route error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
