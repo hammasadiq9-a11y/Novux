@@ -29,19 +29,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to create Netlify site', detail: err }, { status: 500 })
     }
 
-    const site = await siteRes.json()
+    const site   = await siteRes.json()
     const siteId = site.id
 
     // 2. Deploy the HTML file as a zip
-    // Netlify expects a zip with index.html inside
-    // We'll use the files API to deploy directly
+    const zipBuffer = await createZip(html)
+    const zipUint8  = new Uint8Array(zipBuffer)
+
     const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/zip',
         'Authorization': `Bearer ${token}`,
       },
-      body: await createZip(html),
+      body: zipUint8,
     })
 
     if (!deployRes.ok) {
@@ -66,19 +67,14 @@ export async function POST(req: NextRequest) {
 
 // Create a minimal zip containing index.html
 async function createZip(html: string): Promise<Buffer> {
-  // Netlify accepts a zip with index.html
-  // We build a minimal ZIP manually (no external deps needed)
-  const encoder    = new TextEncoder()
-  const content    = encoder.encode(html)
-  const fileName   = 'index.html'
+  const encoder       = new TextEncoder()
+  const content       = encoder.encode(html)
+  const fileName      = 'index.html'
   const fileNameBytes = encoder.encode(fileName)
 
-  // Local file header
-  const localHeader = buildLocalHeader(fileNameBytes, content)
-  // Central directory header
+  const localHeader   = buildLocalHeader(fileNameBytes, content)
   const centralHeader = buildCentralHeader(fileNameBytes, content, localHeader.length)
-  // End of central directory
-  const eocd = buildEOCD(centralHeader.length, localHeader.length + content.length)
+  const eocd          = buildEOCD(centralHeader.length, localHeader.length + content.length)
 
   return Buffer.concat([localHeader, content, centralHeader, eocd])
 }
@@ -111,20 +107,20 @@ function writeUint32LE(val: number): Uint8Array {
 }
 
 function buildLocalHeader(fileName: Uint8Array, content: Uint8Array): Buffer {
-  const crc    = crc32(content)
-  const size   = content.length
+  const crc  = crc32(content)
+  const size = content.length
   return Buffer.concat([
-    Buffer.from([0x50, 0x4B, 0x03, 0x04]), // signature
-    writeUint16LE(20),                       // version needed
-    writeUint16LE(0),                        // flags
-    writeUint16LE(0),                        // compression (stored)
-    writeUint16LE(0),                        // mod time
-    writeUint16LE(0),                        // mod date
-    writeUint32LE(crc),                      // crc32
-    writeUint32LE(size),                     // compressed size
-    writeUint32LE(size),                     // uncompressed size
-    writeUint16LE(fileName.length),          // filename length
-    writeUint16LE(0),                        // extra field length
+    Buffer.from([0x50, 0x4B, 0x03, 0x04]),
+    writeUint16LE(20),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint32LE(crc),
+    writeUint32LE(size),
+    writeUint32LE(size),
+    writeUint16LE(fileName.length),
+    writeUint16LE(0),
     fileName,
   ])
 }
@@ -133,36 +129,36 @@ function buildCentralHeader(fileName: Uint8Array, content: Uint8Array, localOffs
   const crc  = crc32(content)
   const size = content.length
   return Buffer.concat([
-    Buffer.from([0x50, 0x4B, 0x01, 0x02]), // signature
-    writeUint16LE(20),                       // version made by
-    writeUint16LE(20),                       // version needed
-    writeUint16LE(0),                        // flags
-    writeUint16LE(0),                        // compression
-    writeUint16LE(0),                        // mod time
-    writeUint16LE(0),                        // mod date
-    writeUint32LE(crc),                      // crc32
-    writeUint32LE(size),                     // compressed size
-    writeUint32LE(size),                     // uncompressed size
-    writeUint16LE(fileName.length),          // filename length
-    writeUint16LE(0),                        // extra field length
-    writeUint16LE(0),                        // file comment length
-    writeUint16LE(0),                        // disk number start
-    writeUint16LE(0),                        // internal attributes
-    writeUint32LE(0),                        // external attributes
-    writeUint32LE(localOffset),              // offset of local header
+    Buffer.from([0x50, 0x4B, 0x01, 0x02]),
+    writeUint16LE(20),
+    writeUint16LE(20),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint32LE(crc),
+    writeUint32LE(size),
+    writeUint32LE(size),
+    writeUint16LE(fileName.length),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint32LE(0),
+    writeUint32LE(localOffset),
     fileName,
   ])
 }
 
 function buildEOCD(centralDirSize: number, centralDirOffset: number): Buffer {
   return Buffer.concat([
-    Buffer.from([0x50, 0x4B, 0x05, 0x06]), // signature
-    writeUint16LE(0),                        // disk number
-    writeUint16LE(0),                        // disk with central dir
-    writeUint16LE(1),                        // entries on disk
-    writeUint16LE(1),                        // total entries
-    writeUint32LE(centralDirSize),           // central dir size
-    writeUint32LE(centralDirOffset),         // central dir offset
-    writeUint16LE(0),                        // comment length
+    Buffer.from([0x50, 0x4B, 0x05, 0x06]),
+    writeUint16LE(0),
+    writeUint16LE(0),
+    writeUint16LE(1),
+    writeUint16LE(1),
+    writeUint32LE(centralDirSize),
+    writeUint32LE(centralDirOffset),
+    writeUint16LE(0),
   ])
 }
