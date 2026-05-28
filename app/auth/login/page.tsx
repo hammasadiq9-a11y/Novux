@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import gsap from 'gsap'
 import { supabase } from '@/lib/supabase'
 
-type Mode = 'login' | 'signup'
+type Mode = 'login' | 'signup' | 'forgot'
 
 export default function AuthPage() {
   const router  = useRouter()
@@ -73,9 +73,23 @@ export default function AuthPage() {
   }
 
   const handleSubmit = async () => {
+    setError(''); setSuccess('')
+
+    if (mode === 'forgot') {
+      if (!email) { setError('Please enter your email.'); return }
+      setLoading(true)
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      })
+      setLoading(false)
+      if (error) setError(error.message)
+      else setSuccess('Check your email for a password reset link.')
+      return
+    }
+
     if (!email || !password) { setError('Please fill in all fields.'); return }
     if (mode === 'signup' && !name) { setError('Please enter your name.'); return }
-    setLoading(true); setError(''); setSuccess('')
+    setLoading(true)
 
     if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -98,6 +112,48 @@ export default function AuthPage() {
     fontFamily: "'Inter', sans-serif", transition: 'border-color 200ms',
     boxSizing: 'border-box' as const,
   })
+
+  const headings: Record<Mode, string> = {
+    login:  'Welcome back.',
+    signup: 'Create your account.',
+    forgot: 'Reset your password.',
+  }
+
+  const subTexts: Record<Mode, React.ReactNode> = {
+    login: (
+      <>
+        Don&apos;t have an account?{' '}
+        <button onClick={() => switchMode('signup')}
+          style={{ background: 'none', border: 'none', color: '#C8FF00', cursor: 'pointer', fontFamily: "'Inter', sans-serif", fontSize: '0.875rem', fontWeight: 600, padding: 0 }}>
+          Sign up
+        </button>
+      </>
+    ),
+    signup: (
+      <>
+        Already have an account?{' '}
+        <button onClick={() => switchMode('login')}
+          style={{ background: 'none', border: 'none', color: '#C8FF00', cursor: 'pointer', fontFamily: "'Inter', sans-serif", fontSize: '0.875rem', fontWeight: 600, padding: 0 }}>
+          Sign in
+        </button>
+      </>
+    ),
+    forgot: (
+      <>
+        Remembered it?{' '}
+        <button onClick={() => switchMode('login')}
+          style={{ background: 'none', border: 'none', color: '#C8FF00', cursor: 'pointer', fontFamily: "'Inter', sans-serif", fontSize: '0.875rem', fontWeight: 600, padding: 0 }}>
+          Back to sign in
+        </button>
+      </>
+    ),
+  }
+
+  const btnLabels: Record<Mode, string> = {
+    login:  'Sign In →',
+    signup: 'Create Account ✦',
+    forgot: 'Send Reset Link →',
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative', overflow: 'hidden' }}>
@@ -134,19 +190,16 @@ export default function AuthPage() {
         {/* Header */}
         <div style={{ marginBottom: '2rem' }}>
           <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '1.625rem', fontWeight: 900, letterSpacing: '-0.03em', color: '#ffffff', marginBottom: '0.375rem' }}>
-            {mode === 'login' ? 'Welcome back.' : 'Create your account.'}
+            {headings[mode]}
           </h2>
           <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.875rem', color: 'rgba(255,255,255,0.35)' }}>
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-            <button onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
-              style={{ background: 'none', border: 'none', color: '#C8FF00', cursor: 'pointer', fontFamily: "'Inter', sans-serif", fontSize: '0.875rem', fontWeight: 600, padding: 0 }}>
-              {mode === 'login' ? 'Sign up' : 'Sign in'}
-            </button>
+            {subTexts[mode]}
           </p>
         </div>
 
         {/* Fields */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+
           {mode === 'signup' && (
             <div>
               <label style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em', display: 'block', marginBottom: '0.5rem' }}>Full Name</label>
@@ -158,6 +211,7 @@ export default function AuthPage() {
                 style={inputStyle(focusedField === 'name')} />
             </div>
           )}
+
           <div>
             <label style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em', display: 'block', marginBottom: '0.5rem' }}>Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -167,15 +221,28 @@ export default function AuthPage() {
               onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
               style={inputStyle(focusedField === 'email')} />
           </div>
-          <div>
-            <label style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em', display: 'block', marginBottom: '0.5rem' }}>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField('')}
-              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-              style={inputStyle(focusedField === 'password')} />
-          </div>
+
+          {mode !== 'forgot' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <label style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em' }}>Password</label>
+                {mode === 'login' && (
+                  <button onClick={() => switchMode('forgot')}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', padding: 0, transition: 'color 200ms' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#C8FF00')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}>
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                onFocus={() => setFocusedField('password')}
+                onBlur={() => setFocusedField('')}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                style={inputStyle(focusedField === 'password')} />
+            </div>
+          )}
         </div>
 
         {/* Error / Success */}
@@ -190,11 +257,11 @@ export default function AuthPage() {
           </div>
         )}
 
-        {/* Magnetic submit button */}
+        {/* Submit */}
         <button ref={btnRef} onClick={handleSubmit} disabled={loading}
           onMouseMove={onBtnMove} onMouseEnter={onBtnEnter} onMouseLeave={onBtnLeave}
           style={{ width: '100%', padding: '0.9375rem', backgroundColor: loading ? 'rgba(200,255,0,0.5)' : '#C8FF00', color: '#000000', border: 'none', borderRadius: '10px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: '0.9375rem', cursor: loading ? 'not-allowed' : 'pointer', transition: 'box-shadow 250ms, background-color 200ms', letterSpacing: '-0.01em', willChange: 'transform' }}>
-          {loading ? 'Please wait…' : mode === 'login' ? 'Sign In →' : 'Create Account ✦'}
+          {loading ? 'Please wait…' : btnLabels[mode]}
         </button>
 
         {/* Divider */}
@@ -216,7 +283,6 @@ export default function AuthPage() {
       <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', color: 'rgba(255,255,255,0.15)', marginTop: '2rem', textAlign: 'center' }}>
         By signing up you agree to our terms of service.
       </p>
-
     </div>
   )
 }
