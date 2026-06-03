@@ -100,7 +100,7 @@ export default function AuthPage() {
         options: { data: { full_name: name } },
       })
       if (error) { setError(error.message); setLoading(false) }
-      else { setSuccess('Check your email to confirm your account.'); setLoading(false) }
+      else { router.push('/onboarding') }
     }
   }
 

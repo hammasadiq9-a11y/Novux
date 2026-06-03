@@ -1,247 +1,247 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import gsap from 'gsap'
 import { supabase } from '@/lib/supabase'
 
-/* ── Types ───────────────────────────────────────────────────── */
-type Device = 'desktop' | 'tablet' | 'mobile'
+const FONTS = `
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  @import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=satoshi@400,500,600&display=swap');
 
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #050505;
+    --surface:  #0f0f0f;
+    --surface2: #161616;
+    --border:   rgba(255,255,255,0.07);
+    --border2:  rgba(255,255,255,0.12);
+    --text:     #EFEFEF;
+    --muted:    rgba(239,239,239,0.35);
+    --accent:   #E8FF47;
+    --accent-dim: rgba(232,255,71,0.08);
+    --accent-mid: rgba(232,255,71,0.18);
+    --danger:   #FF4D4D;
+    --success:  #4ade80;
+    --f-display: 'Clash Display', sans-serif;
+    --f-label:   'Bebas Neue', sans-serif;
+    --f-body:    'Satoshi', sans-serif;
+  }
+
+  html { background: var(--bg); color: var(--text); }
+  ::selection { background: var(--accent); color: #000; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+  @keyframes spin    { to { transform: rotate(360deg); } }
+  @keyframes fadeUp  { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes shimmer { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+  @keyframes pulse   { 0%,80%,100% { opacity:.2; transform:scale(.8); } 40% { opacity:1; transform:scale(1.1); } }
+`
+
+type Device = 'desktop' | 'tablet' | 'mobile'
 const DEVICE_WIDTHS: Record<Device, string> = {
   desktop: '100%',
   tablet:  '768px',
   mobile:  '390px',
 }
 
-/* ── Magnetic Button ─────────────────────────────────────────── */
-function MagneticBtn({
-  children, onClick, disabled = false, variant = 'accent', fullWidth = false, size = 'md',
-}: {
-  children: React.ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  variant?: 'accent' | 'ghost' | 'danger'
-  fullWidth?: boolean
-  size?: 'sm' | 'md' | 'lg'
+const Label = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+  <span style={{ fontFamily: 'var(--f-label)', fontSize: '0.7rem', letterSpacing: '0.14em', color: 'var(--muted)', ...style }}>{children}</span>
+)
+
+const Rule = ({ style }: { style?: React.CSSProperties }) => (
+  <div style={{ height: '1px', backgroundColor: 'var(--border)', width: '100%', ...style }} />
+)
+
+function Btn({ children, onClick, disabled = false, variant = 'accent', size = 'md', fullWidth = false }: {
+  children: React.ReactNode; onClick?: () => void; disabled?: boolean
+  variant?: 'accent' | 'ghost' | 'outline'; size?: 'sm' | 'md' | 'lg'; fullWidth?: boolean
 }) {
   const ref = useRef<HTMLButtonElement>(null)
-
-  const onMove = (e: React.MouseEvent) => {
+  const styles: Record<string, React.CSSProperties> = {
+    accent:  { background: 'var(--accent)',  color: '#000', border: 'none' },
+    ghost:   { background: 'transparent',    color: 'var(--muted)', border: '1px solid var(--border)' },
+    outline: { background: 'transparent',    color: 'var(--text)',  border: '1px solid var(--border2)' },
+  }
+  const pads = { sm: '0.4rem 1rem', md: '0.65rem 1.5rem', lg: '0.9rem 2.25rem' }
+  const sizes = { sm: '0.75rem', md: '0.85rem', lg: '0.95rem' }
+  const onEnter = () => {
     if (!ref.current || disabled) return
-    const r = ref.current.getBoundingClientRect()
-    gsap.to(ref.current, { x: (e.clientX - r.left - r.width / 2) * 0.28, y: (e.clientY - r.top - r.height / 2) * 0.28, duration: 0.3, ease: 'power2.out' })
+    if (variant === 'accent') gsap.to(ref.current, { scale: 1.03, duration: 0.25, ease: 'power2.out' })
+    else gsap.to(ref.current, { borderColor: 'rgba(255,255,255,0.25)', color: '#fff', duration: 0.2 })
   }
   const onLeave = () => {
     if (!ref.current) return
-    gsap.to(ref.current, { x: 0, y: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' })
-    ref.current.style.boxShadow = 'none'
-    if (variant === 'ghost') ref.current.style.backgroundColor = 'transparent'
+    gsap.to(ref.current, { scale: 1, borderColor: variant === 'outline' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)', color: variant === 'accent' ? '#000' : variant === 'outline' ? '#efefef' : 'rgba(239,239,239,0.35)', duration: 0.3, ease: 'power2.out' })
   }
-  const onEnter = () => {
-    if (!ref.current || disabled) return
-    if (variant === 'accent') ref.current.style.boxShadow = '0 0 28px rgba(200,255,0,0.35)'
-    else if (variant === 'ghost') ref.current.style.backgroundColor = 'rgba(255,255,255,0.06)'
-  }
-
-  const pad = size === 'lg' ? '0.875rem 2rem' : size === 'sm' ? '0.375rem 0.875rem' : '0.65rem 1.5rem'
-  const fs  = size === 'lg' ? '1rem' : size === 'sm' ? '0.78rem' : '0.875rem'
-  const variantStyle: React.CSSProperties =
-    variant === 'accent' ? { backgroundColor: '#C8FF00', color: '#000000' } :
-    variant === 'danger'  ? { backgroundColor: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' } :
-    { backgroundColor: 'transparent', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.1)' }
-
   return (
-    <button ref={ref} onClick={disabled ? undefined : onClick}
-      onMouseMove={onMove} onMouseEnter={onEnter} onMouseLeave={onLeave}
-      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: fs, letterSpacing: '-0.01em', border: 'none', borderRadius: '10px', padding: pad, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, willChange: 'transform', transition: 'box-shadow 250ms, background-color 200ms', width: fullWidth ? '100%' : undefined, ...variantStyle }}>
+    <button ref={ref} onClick={disabled ? undefined : onClick} onMouseEnter={onEnter} onMouseLeave={onLeave}
+      style={{ ...styles[variant], fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: sizes[size], letterSpacing: '0.01em', padding: pads[size], borderRadius: '8px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.35 : 1, width: fullWidth ? '100%' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', transition: 'opacity 200ms', willChange: 'transform' }}>
       {children}
     </button>
   )
 }
 
-/* ── Step Panel ──────────────────────────────────────────────── */
-function StepPanel({ children }: { children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!ref.current) return
-    gsap.fromTo(ref.current, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out' })
-  }, [])
-  return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>{children}</div>
-}
-
-/* ── Progress Bar ────────────────────────────────────────────── */
-function ProgressBar({ current, total }: { current: number; total: number }) {
-  const barRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!barRef.current) return
-    gsap.to(barRef.current, { width: `${(current / total) * 100}%`, duration: 0.5, ease: 'power2.out' })
-  }, [current, total])
+function StepRail({ current, total }: { current: number; total: number }) {
   return (
-    <div style={{ height: '2px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden', marginBottom: '2rem' }}>
-      <div ref={barRef} style={{ height: '100%', backgroundColor: '#C8FF00', width: '0%', borderRadius: '99px' }} />
+    <div style={{ display: 'flex', gap: '4px', marginBottom: '3rem' }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <div key={i} style={{ flex: 1, height: '2px', borderRadius: '99px', backgroundColor: i < current ? 'var(--accent)' : 'var(--border)', transition: 'background-color 400ms ease' }} />
+      ))}
     </div>
   )
 }
 
-/* ── Select Card ─────────────────────────────────────────────── */
-function SelectCard({ label, emoji, active, onClick }: {
-  label: string; emoji: string; active: boolean; onClick: () => void
-}) {
+function StepPanel({ children, stepNum }: { children: React.ReactNode; stepNum: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!ref.current) return
+    gsap.fromTo(ref.current, { opacity: 0, clipPath: 'inset(0 0 100% 0)' }, { opacity: 1, clipPath: 'inset(0 0 0% 0)', duration: 0.6, ease: 'power4.out' })
+  }, [])
   return (
-    <button onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.875rem',
-        padding: '0.875rem 1.25rem', borderRadius: '12px', cursor: 'pointer',
-        border: `1px solid ${active ? '#C8FF00' : 'rgba(255,255,255,0.08)'}`,
-        backgroundColor: active ? 'rgba(200,255,0,0.07)' : '#111111',
-        color: active ? '#C8FF00' : 'rgba(255,255,255,0.6)',
-        fontFamily: "'Inter', sans-serif", fontSize: '0.9rem', fontWeight: 500,
-        transition: 'all 200ms', textAlign: 'left', width: '100%',
-        boxShadow: active ? '0 0 16px rgba(200,255,0,0.08)' : 'none',
-      }}>
-      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{emoji}</span>
-      <span style={{ flex: 1 }}>{label}</span>
-      {active && (
-        <span style={{
-          width: '18px', height: '18px', borderRadius: '50%',
-          backgroundColor: '#C8FF00', color: '#000', fontSize: '0.65rem',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 900, flexShrink: 0,
-        }}>✓</span>
-      )}
+    <div ref={ref} style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '0 2.5rem', opacity: 0 }}>
+      <div style={{ paddingTop: '0.25rem' }}>
+        <div style={{ fontFamily: 'var(--f-label)', fontSize: '6rem', lineHeight: 1, color: 'var(--border2)', userSelect: 'none' }}>
+          {String(stepNum).padStart(2, '0')}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>{children}</div>
+    </div>
+  )
+}
+
+function SelectCard({ label, sub, active, onClick }: { label: string; sub?: string; active: boolean; onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null)
+  const onEnter = () => { if (ref.current && !active) gsap.to(ref.current, { borderColor: 'rgba(255,255,255,0.18)', duration: 0.2 }) }
+  const onLeave = () => { if (ref.current && !active) gsap.to(ref.current, { borderColor: 'rgba(255,255,255,0.07)', duration: 0.3 }) }
+  return (
+    <button ref={ref} onClick={onClick} onMouseEnter={onEnter} onMouseLeave={onLeave}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', borderRadius: '10px', border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, backgroundColor: active ? 'var(--accent-dim)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'background-color 200ms' }}>
+      <div>
+        <p style={{ fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: '0.9rem', color: active ? 'var(--accent)' : 'var(--text)' }}>{label}</p>
+        {sub && <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.15rem' }}>{sub}</p>}
+      </div>
+      <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border2)'}`, backgroundColor: active ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 200ms' }}>
+        {active && <span style={{ fontSize: '0.55rem', color: '#000', fontWeight: 900 }}>✓</span>}
+      </div>
     </button>
   )
 }
 
-/* ── Loading Step ────────────────────────────────────────────── */
-function LoadingStep({ count }: { count: number }) {
-  const dotsRef = useRef<HTMLDivElement[]>([])
-  const textRef = useRef<HTMLDivElement>(null)
-  const lines   = ['✦ Designing 3 unique layouts', '✦ Writing custom copy', '✦ Crafting animations', '✦ Optimizing for performance']
-
-  useEffect(() => {
-    if (textRef.current) {
-      gsap.fromTo(textRef.current.children, { opacity: 0, x: -12 }, { opacity: 1, x: 0, stagger: 0.18, delay: 0.4, duration: 0.4, ease: 'power2.out' })
-    }
-    dotsRef.current.forEach((dot, i) => {
-      if (!dot) return
-      gsap.to(dot, { scale: 1.4, opacity: 0.4, repeat: -1, yoyo: true, duration: 0.6, delay: i * 0.15, ease: 'sine.inOut' })
-    })
-  }, [])
-
+function Input({ value, onChange, onKeyDown, placeholder, autoFocus = false }: {
+  value: string; onChange: (v: string) => void; onKeyDown?: (e: React.KeyboardEvent) => void; placeholder?: string; autoFocus?: boolean
+}) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8rem 0', gap: '2.5rem' }}>
-      <div style={{ position: 'relative', width: '72px', height: '72px' }}>
-        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.06)' }} />
-        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', borderTop: '2px solid #C8FF00', borderRight: '2px solid transparent', borderBottom: '2px solid transparent', borderLeft: '2px solid transparent', animation: 'spin 0.9s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} ref={(el) => { if (el) dotsRef.current[i] = el }}
-            style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: i < count ? '#C8FF00' : 'rgba(255,255,255,0.15)' }} />
-        ))}
-      </div>
-      <div style={{ textAlign: 'center' }}>
-        <h2 style={{ fontSize: 'clamp(1.8rem,4vw,2.5rem)', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
-          Building 3 variations
-        </h2>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem' }}>
-          {count === 0 ? 'Generating your sites…' : `${count} of 3 ready…`}
+    <input autoFocus={autoFocus} value={value} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown} placeholder={placeholder}
+      style={{ width: '100%', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem 1.25rem', color: 'var(--text)', fontSize: '1rem', fontFamily: 'var(--f-body)', outline: 'none', transition: 'border-color 200ms' }}
+      onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+      onBlur={e  => (e.target.style.borderColor = value ? 'rgba(232,255,71,0.4)' : 'rgba(255,255,255,0.07)')}
+    />
+  )
+}
+
+function Textarea({ value, onChange, placeholder, rows = 4 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
+  return (
+    <textarea autoFocus value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
+      style={{ width: '100%', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem 1.25rem', color: 'var(--text)', fontSize: '1rem', fontFamily: 'var(--f-body)', outline: 'none', resize: 'none', lineHeight: 1.6, transition: 'border-color 200ms' }}
+      onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+      onBlur={e  => (e.target.style.borderColor = value ? 'rgba(232,255,71,0.4)' : 'rgba(255,255,255,0.07)')}
+    />
+  )
+}
+
+function LoadingView({ count }: { count: number }) {
+  const linesRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!linesRef.current) return
+    gsap.fromTo(linesRef.current.children, { opacity: 0, x: -16 }, { opacity: 1, x: 0, stagger: 0.22, delay: 0.5, duration: 0.5, ease: 'power3.out' })
+  }, [])
+  const steps = ['Interpreting your brief', 'Designing layout systems', 'Writing conversion copy', 'Composing GSAP animations', 'Optimising for all devices']
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ maxWidth: '480px', width: '100%', padding: '2rem' }}>
+        <div style={{ position: 'relative', width: '56px', height: '56px', marginBottom: '3rem' }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '1px solid var(--border)' }} />
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', borderTop: '1.5px solid var(--accent)', borderRight: '1.5px solid transparent', borderBottom: '1.5px solid transparent', borderLeft: '1.5px solid transparent', animation: 'spin 1s linear infinite' }} />
+        </div>
+        <Rule style={{ marginBottom: '2rem' }} />
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <span style={{ fontFamily: 'var(--f-label)', fontSize: '5rem', lineHeight: 1, color: 'var(--accent)' }}>{count}</span>
+          <span style={{ fontFamily: 'var(--f-label)', fontSize: '2rem', color: 'var(--border2)' }}>/ 2</span>
+        </div>
+        <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '3rem' }}>
+          {count === 0 ? 'Generating your variations…' : count === 1 ? 'First variation ready — finishing second…' : 'Both variations ready.'}
         </p>
-      </div>
-      <div ref={textRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', textAlign: 'center' }}>
-        {lines.map((l) => <p key={l} style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.875rem', opacity: 0 }}>{l}</p>)}
+        <Rule style={{ marginBottom: '2rem' }} />
+        <div ref={linesRef} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {steps.map((s, i) => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '1rem', opacity: 0 }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0, backgroundColor: i < (count * 2.5) ? 'var(--accent)' : 'var(--border2)', transition: 'background-color 400ms' }} />
+              <span style={{ fontFamily: 'var(--f-body)', fontSize: '0.825rem', color: i < (count * 2.5) ? 'var(--text)' : 'var(--muted)' }}>{s}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-/* ── Variation Picker ────────────────────────────────────────── */
-function VariationPicker({ variations, onPick, onRegenerate }: {
-  variations: string[]
-  onPick: (html: string) => void
-  onRegenerate: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
+function VariationPicker({ variations, onPick, onRegenerate }: { variations: string[]; onPick: (html: string) => void; onRegenerate: () => void }) {
+  const headerRef = useRef<HTMLDivElement>(null)
+  const gridRef   = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<number | null>(null)
-
   useEffect(() => {
-    if (!ref.current) return
-    gsap.fromTo(ref.current.children, { opacity: 0, y: 32 }, { opacity: 1, y: 0, stagger: 0.12, duration: 0.55, ease: 'power3.out' })
+    gsap.fromTo(headerRef.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' })
+    gsap.fromTo(gridRef.current!.children, { opacity: 0, y: 40 }, { opacity: 1, y: 0, stagger: 0.15, delay: 0.2, duration: 0.65, ease: 'power3.out' })
   }, [])
-
-  const SCALE       = 0.22
-  const IFRAME_W    = 1280
-  const IFRAME_H    = 900
-  const CONTAINER_W = IFRAME_W * SCALE
-  const CONTAINER_H = IFRAME_H * SCALE
-
+  const SCALE = 0.21, IFRAME_W = 1280, IFRAME_H = 900, CONT_H = IFRAME_H * SCALE
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a', color: '#ffffff', padding: '4rem 2rem 8rem' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C8FF00', marginBottom: '1rem' }}>3 Variations Ready</p>
-          <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 'clamp(2rem, 5vw, 3.5rem)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: '1rem' }}>
-            Pick your favourite.
+    <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg)', padding: '5rem 2rem 8rem' }}>
+      <style>{FONTS}</style>
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        <div ref={headerRef} style={{ marginBottom: '4rem', opacity: 0 }}>
+          <Label style={{ display: 'block', marginBottom: '1rem' }}>STEP 7 — CHOOSE YOUR VARIATION</Label>
+          <Rule style={{ marginBottom: '2rem' }} />
+          <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.5rem, 6vw, 5rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, color: 'var(--text)' }}>
+            Two sites.<br /><span style={{ color: 'var(--accent)' }}>Pick one.</span>
           </h2>
-          <p style={{ fontFamily: "'Inter', sans-serif", color: 'rgba(255,255,255,0.4)', fontSize: '0.95rem' }}>
-            Each one is completely unique. Choose one to open in the full editor.
-          </p>
         </div>
-
-        <div ref={ref} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+        <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '3rem' }}>
           {variations.map((html, i) => (
-            <div key={i}
-              onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}
-              style={{ backgroundColor: '#111111', border: `1px solid ${hovered === i ? 'rgba(200,255,0,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '20px', overflow: 'hidden', transition: 'border-color 250ms, transform 300ms', transform: hovered === i ? 'translateY(-4px)' : 'translateY(0)', cursor: 'pointer' }}
-              onClick={() => onPick(html)}>
-              <div style={{ backgroundColor: '#0f0f0f', padding: '0.6rem 0.875rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <div style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: 'rgba(239,68,68,0.4)' }} />
-                <div style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: 'rgba(234,179,8,0.4)' }} />
-                <div style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: 'rgba(34,197,94,0.4)' }} />
-                <div style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '4px', padding: '0.15rem 0.5rem', marginLeft: '0.375rem' }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: '0.62rem', color: 'rgba(255,255,255,0.2)' }}>variation {i + 1}</span>
+            <div key={i} onClick={() => onPick(html)} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
+              style={{ borderRadius: '16px', overflow: 'hidden', border: `1px solid ${hovered === i ? 'rgba(232,255,71,0.35)' : 'var(--border)'}`, backgroundColor: 'var(--surface)', cursor: 'pointer', transition: 'border-color 250ms, transform 300ms', transform: hovered === i ? 'translateY(-6px)' : 'translateY(0)', opacity: 0 }}>
+              <div style={{ backgroundColor: 'var(--surface2)', padding: '0.7rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {['rgba(255,100,100,0.5)', 'rgba(255,200,50,0.5)', 'rgba(100,220,100,0.5)'].map((c, j) => <div key={j} style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: c }} />)}
+                <div style={{ flex: 1, height: '20px', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '4px', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', paddingLeft: '0.5rem' }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: 'rgba(255,255,255,0.18)' }}>variation-{i + 1}.novux.app</span>
                 </div>
               </div>
-              <div style={{ width: '100%', height: `${CONTAINER_H}px`, overflow: 'hidden', position: 'relative', backgroundColor: '#000' }}>
-                <div style={{ width: `${CONTAINER_W}px`, height: `${CONTAINER_H}px`, overflow: 'hidden', margin: '0 auto' }}>
-                  <iframe
-                    srcDoc={html}
-                    style={{ width: `${IFRAME_W}px`, height: `${IFRAME_H}px`, border: 'none', transform: `scale(${SCALE})`, transformOrigin: 'top left', pointerEvents: 'none' }}
-                    title={`Variation ${i + 1}`}
-                  />
-                </div>
-                <div style={{ position: 'absolute', inset: 0, background: hovered === i ? 'rgba(200,255,0,0.06)' : 'transparent', transition: 'background 250ms', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {hovered === i && (
-                    <div style={{ backgroundColor: '#C8FF00', color: '#000', fontFamily: "'Syne', sans-serif", fontWeight: 900, fontSize: '0.875rem', padding: '0.6rem 1.5rem', borderRadius: '99px' }}>
-                      Choose this one →
-                    </div>
-                  )}
-                </div>
+              <div style={{ width: '100%', height: `${CONT_H}px`, overflow: 'hidden', position: 'relative', backgroundColor: '#000' }}>
+                <iframe srcDoc={html} style={{ width: `${IFRAME_W}px`, height: `${IFRAME_H}px`, border: 'none', transform: `scale(${SCALE})`, transformOrigin: 'top left', pointerEvents: 'none' }} title={`Variation ${i + 1}`} />
+                {hovered === i && (
+                  <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ backgroundColor: 'var(--accent)', color: '#000', fontFamily: 'var(--f-body)', fontWeight: 700, fontSize: '0.85rem', padding: '0.65rem 1.75rem', borderRadius: '8px' }}>Select this variation →</div>
+                  </div>
+                )}
               </div>
-              <div style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)' }}>
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontSize: '0.9rem', fontWeight: 800, color: '#ffffff' }}>Variation {i + 1}</p>
-                  <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>Unique layout & style</p>
+                  <p style={{ fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text)' }}>Variation {i + 1}</p>
+                  <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.72rem', color: 'var(--muted)', marginTop: '0.1rem' }}>Unique layout · unique copy</p>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); onPick(html) }}
-                  style={{ backgroundColor: hovered === i ? '#C8FF00' : 'rgba(200,255,0,0.1)', color: hovered === i ? '#000' : '#C8FF00', border: 'none', borderRadius: '8px', padding: '0.4rem 1rem', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'background 200ms, color 200ms' }}>
-                  Select
-                </button>
+                <Btn variant={hovered === i ? 'accent' : 'ghost'} size="sm" onClick={() => onPick(html)}>Select</Btn>
               </div>
             </div>
           ))}
         </div>
-
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button onClick={onRegenerate}
-            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.4)', fontFamily: "'Inter', sans-serif", fontSize: '0.875rem', padding: '0.65rem 1.5rem', cursor: 'pointer', transition: 'color 200ms, border-color 200ms' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}>
-            ↺ Not happy? Regenerate all 3
+            style={{ fontFamily: 'var(--f-body)', fontSize: '0.825rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 200ms', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}>
+            ↺ Not what you expected? Regenerate both
           </button>
         </div>
       </div>
@@ -249,307 +249,340 @@ function VariationPicker({ variations, onPick, onRegenerate }: {
   )
 }
 
-/* ── Device Toggle Button ────────────────────────────────────── */
-function DeviceBtn({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} title={label}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', transition: 'background 200ms, color 200ms', backgroundColor: active ? 'rgba(200,255,0,0.12)' : 'transparent', color: active ? '#C8FF00' : 'rgba(255,255,255,0.35)' }}>
-      {icon}
-    </button>
-  )
-}
-
-/* ── Deploy Modal ────────────────────────────────────────────── */
-function DeployModal({ businessName, onClose }: { businessName: string; onClose: () => void }) {
+// ─── Real Deploy Modal ────────────────────────────────────────────────────────
+function DeployModal({ businessName, html, projectId, onClose }: {
+  businessName: string
+  html:         string
+  projectId:    string | null
+  onClose:      () => void
+}) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (!ref.current) return
-    gsap.fromTo(ref.current, { opacity: 0, scale: 0.96, y: 16 }, { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: 'power3.out' })
+    gsap.fromTo(ref.current, { opacity: 0, y: 24, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: 'power3.out' })
   }, [])
 
-  const slug      = businessName.toLowerCase().replace(/\s+/g, '-')
-  const platforms = [
-    { name: 'Vercel',  icon: '▲', color: '#ffffff', desc: 'Deploy to Vercel — fastest global CDN',   action: () => alert('Vercel deploy coming soon')  },
-    { name: 'Netlify', icon: '◆', color: '#00C7B7', desc: 'Deploy to Netlify — free tier available', action: () => alert('Netlify deploy coming soon') },
-  ]
+  type DeployState = 'idle' | 'deploying' | 'success' | 'error'
+  const [state,   setState]   = useState<DeployState>('idle')
+  const [liveUrl, setLiveUrl] = useState('')
+  const [errMsg,  setErrMsg]  = useState('')
+  const [copyOk,  setCopyOk]  = useState(false)
+
+  const slug = businessName.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60)
+
+  const deploy = async () => {
+    setState('deploying')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res  = await fetch('/api/deploy', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          html,
+          businessName,
+          projectId,
+          userId: session?.user?.id ?? null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setErrMsg(data.error ?? 'Deployment failed'); setState('error'); return }
+      setLiveUrl(data.url)
+      setState('success')
+    } catch {
+      setErrMsg('Request failed. Check your connection.')
+      setState('error')
+    }
+  }
+
+  const copyUrl = async () => {
+    await navigator.clipboard.writeText(liveUrl)
+    setCopyOk(true)
+    setTimeout(() => setCopyOk(false), 2000)
+  }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={ref} style={{ backgroundColor: '#111111', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '20px', padding: '2rem', width: '100%', maxWidth: '440px', margin: '0 1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(12px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div ref={ref} style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border2)', borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '440px', margin: '0 1rem' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
           <div>
-            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: '1.25rem', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff', marginBottom: '0.25rem' }}>Deploy Your Site</h3>
-            <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)' }}>
-              Will deploy as <span style={{ color: '#C8FF00' }}>{slug}.novux.app</span>
+            <Label style={{ display: 'block', marginBottom: '0.5rem' }}>DEPLOY TO CLOUDFLARE PAGES</Label>
+            <h3 style={{ fontFamily: 'var(--f-display)', fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)' }}>Go live</h3>
+            <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.78rem', color: 'var(--muted)', marginTop: '0.35rem' }}>
+              → <span style={{ color: 'var(--accent)' }}>{slug}.pages.dev</span>
             </p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '1.1rem', padding: '0.25rem' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {platforms.map((p) => (
-            <button key={p.name} onClick={p.action}
-              style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', backgroundColor: '#1a1a1a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 200ms' }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
-              <span style={{ fontSize: '1.25rem', color: p.color, flexShrink: 0 }}>{p.icon}</span>
+
+        <Rule style={{ marginBottom: '1.5rem' }} />
+
+        {/* Idle */}
+        {state === 'idle' && (
+          <>
+            <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
+              Your site will be deployed to Cloudflare's global edge network and be live in under 30 seconds at:
+              <br /><span style={{ color: 'var(--text)', fontWeight: 600 }}>{slug}.pages.dev</span>
+            </p>
+            <Btn variant="accent" fullWidth onClick={deploy}>▲ Deploy now</Btn>
+          </>
+        )}
+
+        {/* Deploying */}
+        {state === 'deploying' && (
+          <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+            <div style={{ position: 'relative', width: '48px', height: '48px', margin: '0 auto 1.5rem' }}>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '1px solid var(--border)' }} />
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', borderTop: '1.5px solid var(--accent)', borderRight: '1.5px solid transparent', borderBottom: '1.5px solid transparent', borderLeft: '1.5px solid transparent', animation: 'spin 1s linear infinite' }} />
+            </div>
+            <p style={{ fontFamily: 'var(--f-display)', fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>Deploying…</p>
+            <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.8rem', color: 'var(--muted)' }}>Uploading to Cloudflare's edge network</p>
+          </div>
+        )}
+
+        {/* Success */}
+        {state === 'success' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.25rem', backgroundColor: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '10px', marginBottom: '1.25rem' }}>
+              <span style={{ color: 'var(--success)', fontSize: '1.1rem', flexShrink: 0 }}>✓</span>
               <div>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: '0.9rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.2rem' }}>{p.name}</p>
-                <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>{p.desc}</p>
+                <p style={{ fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: '0.875rem', color: 'var(--success)', marginBottom: '0.15rem' }}>Live on Cloudflare Pages</p>
+                <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.75rem', color: 'var(--muted)' }}>Deployed to global edge — accessible worldwide</p>
               </div>
-              <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.2)', fontSize: '0.9rem' }}>→</span>
-            </button>
-          ))}
-        </div>
-        <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', marginTop: '1.25rem' }}>
-          Full deploy API coming in Step 4. Connect your account to enable.
-        </p>
+            </div>
+
+            {/* URL row */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1, backgroundColor: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.65rem 1rem', fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {liveUrl}
+              </div>
+              <button onClick={copyUrl}
+                style={{ fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: '0.75rem', padding: '0 1rem', borderRadius: '8px', border: `1px solid ${copyOk ? 'rgba(74,222,128,0.3)' : 'var(--border)'}`, backgroundColor: copyOk ? 'rgba(74,222,128,0.08)' : 'transparent', color: copyOk ? 'var(--success)' : 'var(--muted)', cursor: 'pointer', flexShrink: 0, transition: 'all 200ms' }}>
+                {copyOk ? '✓' : '⎋ Copy'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <a href={liveUrl} target="_blank" rel="noreferrer" style={{ flex: 1 }}>
+                <Btn variant="accent" fullWidth>Open site ↗</Btn>
+              </a>
+              <Btn variant="ghost" onClick={onClose}>Done</Btn>
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {state === 'error' && (
+          <div>
+            <div style={{ padding: '1rem 1.25rem', backgroundColor: 'rgba(255,77,77,0.06)', border: '1px solid rgba(255,77,77,0.2)', borderRadius: '10px', marginBottom: '1.25rem' }}>
+              <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.825rem', color: 'var(--danger)', lineHeight: 1.5 }}>{errMsg}</p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <Btn variant="accent" fullWidth onClick={deploy}>↺ Try again</Btn>
+              <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-/* ── Builder View ────────────────────────────────────────────── */
-function BuilderView({ generatedCode, businessName, template, onReset }: {
-  generatedCode: string
-  businessName: string
-  template: string
-  onReset: () => void
+// ─── Builder view ─────────────────────────────────────────────────────────────
+function BuilderView({ generatedCode, businessName, template, onReset, projectId, previewToken }: {
+  generatedCode: string; businessName: string; template: string
+  onReset: () => void; projectId: string | null; previewToken: string | null
 }) {
-  const ref        = useRef<HTMLDivElement>(null)
+  const wrapRef    = useRef<HTMLDivElement>(null)
   const iframeRef  = useRef<HTMLIFrameElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  const [device,          setDevice]          = useState<Device>('desktop')
-  const [showDeploy,      setShowDeploy]      = useState(false)
-  const [showChat,        setShowChat]        = useState(false)
-  const [currentCode,     setCurrentCode]     = useState(generatedCode)
-  const [chatLog,         setChatLog]         = useState<{ from: 'user' | 'ai'; text: string }[]>([])
-  const [revisionInput,   setRevisionInput]   = useState('')
-  const [isRevising,      setIsRevising]      = useState(false)
-  const [revisionHistory, setRevisionHistory] = useState<{ role: string; content: string }[]>([])
+  const [device,      setDevice]      = useState<Device>('desktop')
+  const [showDeploy,  setShowDeploy]  = useState(false)
+  const [showChat,    setShowChat]    = useState(false)
+  const [currentCode, setCurrentCode] = useState(generatedCode)
+  const [chatLog,     setChatLog]     = useState<{ from: 'user' | 'ai'; text: string }[]>([])
+  const [revInput,    setRevInput]    = useState('')
+  const [isRevising,  setIsRevising]  = useState(false)
+  const [revHistory,  setRevHistory]  = useState<{ role: string; content: string }[]>([])
+  const [copyOk,      setCopyOk]      = useState(false)
 
-  useEffect(() => {
-    if (!ref.current) return
-    gsap.fromTo(ref.current, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: 'power2.out' })
-  }, [])
-
+  useEffect(() => { gsap.fromTo(wrapRef.current, { opacity: 0 }, { opacity: 1, duration: 0.5 }) }, [])
   useEffect(() => {
     if (!iframeRef.current) return
     gsap.to(iframeRef.current, { width: DEVICE_WIDTHS[device], duration: 0.4, ease: 'power3.out' })
   }, [device])
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatLog])
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLog])
 
   const handleRevision = async () => {
-    if (!revisionInput.trim() || isRevising) return
-    const userMessage = revisionInput.trim()
-    setRevisionInput('')
+    if (!revInput.trim() || isRevising) return
+    const msg = revInput.trim()
+    setRevInput('')
     setIsRevising(true)
-    setChatLog(prev => [...prev, { from: 'user', text: userMessage }])
-
+    setChatLog(p => [...p, { from: 'user', text: msg }])
     try {
-      const res  = await fetch('/api/revise', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentCode, revisionRequest: userMessage, history: revisionHistory }),
-      })
+      const res  = await fetch('/api/revise', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentCode, revisionRequest: msg, history: revHistory }) })
       const data = await res.json()
-
       if (data.updatedCode) {
         setCurrentCode(data.updatedCode)
-        setRevisionHistory(prev => [
-          ...prev,
-          { role: 'user',      content: userMessage      },
-          { role: 'assistant', content: data.updatedCode },
-        ])
-        setChatLog(prev => [...prev, { from: 'ai', text: '✓ Done — preview updated.' }])
+        setRevHistory(p => [...p, { role: 'user', content: msg }, { role: 'assistant', content: data.updatedCode }])
+        setChatLog(p => [...p, { from: 'ai', text: '✓ Done — preview updated.' }])
       } else {
-        setChatLog(prev => [...prev, { from: 'ai', text: 'Something went wrong. Try again.' }])
+        setChatLog(p => [...p, { from: 'ai', text: 'Something went wrong. Try again.' }])
       }
     } catch {
-      setChatLog(prev => [...prev, { from: 'ai', text: 'Request failed. Check your API connection.' }])
-    } finally {
-      setIsRevising(false)
-    }
+      setChatLog(p => [...p, { from: 'ai', text: 'Request failed. Check your connection.' }])
+    } finally { setIsRevising(false) }
   }
 
   const downloadHTML = () => {
-    const blob = new Blob([currentCode], { type: 'text/html' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `${businessName.toLowerCase().replace(/\s+/g, '-')}-website.html`
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([currentCode], { type: 'text/html' })), download: `${businessName.toLowerCase().replace(/\s+/g, '-')}.html` })
     a.click()
-    URL.revokeObjectURL(url)
   }
 
-  const downloadNextJS = () => {
-    const nextCode = `// Generated by Novux — paste into app/page.tsx
-export default function Page() {
-  return (
-    <>
-      <style>{\`${currentCode.match(/<style[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? ''}\`}</style>
-      <div dangerouslySetInnerHTML={{ __html: \`${currentCode.replace(/`/g, '\\`')}\` }} />
-    </>
-  )
-}
-`
-    const blob = new Blob([nextCode], { type: 'text/plain' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `${businessName.toLowerCase().replace(/\s+/g, '-')}-page.tsx`
-    a.click()
-    URL.revokeObjectURL(url)
+  const sharePreview = async () => {
+    if (!previewToken) return
+    await navigator.clipboard.writeText(`${window.location.origin}/preview/${previewToken}`)
+    setCopyOk(true)
+    setTimeout(() => setCopyOk(false), 2000)
   }
 
   const slug = businessName.toLowerCase().replace(/\s+/g, '')
 
+  const DevBtn = ({ icon, d, active }: { icon: string; d: Device; active: boolean }) => (
+    <button onClick={() => setDevice(d)}
+      style={{ width: '32px', height: '32px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.85rem', backgroundColor: active ? 'var(--accent-dim)' : 'transparent', color: active ? 'var(--accent)' : 'var(--muted)', transition: 'all 150ms', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {icon}
+    </button>
+  )
+
   return (
     <>
-      <div ref={ref} style={{ opacity: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-        <div style={{ height: '56px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: 'rgba(10,10,10,0.95)', backdropFilter: 'blur(24px)', display: 'flex', alignItems: 'center', padding: '0 1.25rem', gap: '1rem', zIndex: 50 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
-            <span style={{ fontFamily: "'Syne', sans-serif", fontSize: '1.1rem', fontWeight: 900, letterSpacing: '-0.03em', flexShrink: 0 }}>
-              NOV<span style={{ color: '#C8FF00' }}>UX</span>
-            </span>
-            <div style={{ width: '1px', height: '20px', backgroundColor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, overflow: 'hidden' }}>
-              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{businessName}</span>
-              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#C8FF00', backgroundColor: 'rgba(200,255,0,0.1)', padding: '0.15rem 0.45rem', borderRadius: '99px', flexShrink: 0 }}>{template}</span>
-            </div>
+      <style>{FONTS}</style>
+      <div ref={wrapRef} style={{ opacity: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
+        {/* Topbar */}
+        <div style={{ height: '52px', flexShrink: 0, borderBottom: '1px solid var(--border)', backgroundColor: 'rgba(5,5,5,0.96)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', padding: '0 1.25rem', gap: '0.75rem', zIndex: 50 }}>
+          <span style={{ fontFamily: 'var(--f-label)', fontSize: '1.25rem', letterSpacing: '0.04em', flexShrink: 0 }}>NOV<span style={{ color: 'var(--accent)' }}>UX</span></span>
+          <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--border)', flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: '0.8rem', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{businessName}</span>
+            <span style={{ fontFamily: 'var(--f-label)', fontSize: '0.65rem', letterSpacing: '0.08em', color: 'var(--accent)', backgroundColor: 'var(--accent-dim)', border: '1px solid var(--accent-mid)', padding: '0.15rem 0.5rem', borderRadius: '4px', flexShrink: 0 }}>{template.toUpperCase()}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '0.25rem' }}>
-            <DeviceBtn icon="🖥" label="Desktop" active={device === 'desktop'} onClick={() => setDevice('desktop')} />
-            <DeviceBtn icon="📱" label="Tablet"  active={device === 'tablet'}  onClick={() => setDevice('tablet')}  />
-            <DeviceBtn icon="📲" label="Mobile"  active={device === 'mobile'}  onClick={() => setDevice('mobile')}  />
+          <div style={{ display: 'flex', gap: '2px', backgroundColor: 'var(--surface)', borderRadius: '8px', padding: '3px' }}>
+            <DevBtn icon="🖥" d="desktop" active={device === 'desktop'} />
+            <DevBtn icon="⬜" d="tablet"  active={device === 'tablet'}  />
+            <DevBtn icon="📱" d="mobile"  active={device === 'mobile'}  />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <MagneticBtn variant="ghost" size="sm" onClick={onReset}>↺ Rebuild</MagneticBtn>
-            <MagneticBtn variant="ghost" size="sm" onClick={downloadHTML}>↓ HTML</MagneticBtn>
-            <MagneticBtn variant="ghost" size="sm" onClick={downloadNextJS}>↓ Next.js</MagneticBtn>
-            <button
-              onClick={() => setShowChat(v => !v)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: '0.78rem', backgroundColor: showChat ? 'rgba(200,255,0,0.12)' : 'rgba(255,255,255,0.06)', color: showChat ? '#C8FF00' : 'rgba(255,255,255,0.55)', border: `1px solid ${showChat ? 'rgba(200,255,0,0.25)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '10px', padding: '0.375rem 0.875rem', cursor: 'pointer', transition: 'all 200ms' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <Btn variant="ghost" size="sm" onClick={onReset}>↺ Rebuild</Btn>
+            <Btn variant="ghost" size="sm" onClick={downloadHTML}>↓ HTML</Btn>
+            <button onClick={sharePreview}
+              style={{ fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: '0.75rem', padding: '0.4rem 0.875rem', borderRadius: '8px', border: `1px solid ${copyOk ? 'rgba(100,220,130,0.3)' : 'var(--border)'}`, backgroundColor: copyOk ? 'rgba(100,220,130,0.08)' : 'transparent', color: copyOk ? '#6ddc82' : 'var(--muted)', cursor: 'pointer', transition: 'all 200ms' }}>
+              {copyOk ? '✓ Copied' : '⎋ Share'}
+            </button>
+            <button onClick={() => setShowChat(v => !v)}
+              style={{ fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: '0.75rem', padding: '0.4rem 0.875rem', borderRadius: '8px', border: `1px solid ${showChat ? 'var(--accent-mid)' : 'var(--border)'}`, backgroundColor: showChat ? 'var(--accent-dim)' : 'transparent', color: showChat ? 'var(--accent)' : 'var(--muted)', cursor: 'pointer', transition: 'all 200ms' }}>
               ✦ Revise
             </button>
-            <MagneticBtn variant="accent" size="sm" onClick={() => setShowDeploy(true)}>▲ Deploy</MagneticBtn>
+            <Btn variant="accent" size="sm" onClick={() => setShowDeploy(true)}>▲ Deploy</Btn>
           </div>
         </div>
 
+        {/* Main */}
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-          <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#060606', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ width: '100%', flexShrink: 0, backgroundColor: '#111111', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <div style={{ width: '11px', height: '11px', borderRadius: '50%', backgroundColor: 'rgba(239,68,68,0.45)' }} />
-                <div style={{ width: '11px', height: '11px', borderRadius: '50%', backgroundColor: 'rgba(234,179,8,0.45)' }} />
-                <div style={{ width: '11px', height: '11px', borderRadius: '50%', backgroundColor: 'rgba(34,197,94,0.45)' }} />
+          <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#030303', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flexShrink: 0, backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                {['rgba(255,80,80,0.4)', 'rgba(255,190,50,0.4)', 'rgba(80,200,80,0.4)'].map((c, i) => <div key={i} style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: c }} />)}
               </div>
-              <div style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '6px', padding: '0.25rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ fontSize: '0.6rem', color: '#C8FF00', opacity: 0.7 }}>🔒</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>{slug}.novux.app</span>
+              <div style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '5px', padding: '0.2rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                <span style={{ fontSize: '0.55rem', color: 'var(--accent)', opacity: 0.6 }}>🔒</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--muted)' }}>{slug}.novux.app</span>
               </div>
             </div>
-            <div style={{ flex: 1, width: '100%', display: 'flex', justifyContent: 'center', overflow: 'hidden', padding: device !== 'desktop' ? '1.5rem 0' : '0' }}>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', overflow: 'hidden', padding: device !== 'desktop' ? '2rem 0' : 0 }}>
               <iframe ref={iframeRef} srcDoc={currentCode}
-                style={{ width: DEVICE_WIDTHS[device], height: '100%', border: 'none', display: 'block', borderRadius: device !== 'desktop' ? '12px' : '0', boxShadow: device !== 'desktop' ? '0 16px 64px rgba(0,0,0,0.8)' : 'none', transition: 'border-radius 300ms' }}
-                title="Generated Site Preview"
-              />
+                style={{ width: DEVICE_WIDTHS[device], height: '100%', border: 'none', borderRadius: device !== 'desktop' ? '12px' : 0, boxShadow: device !== 'desktop' ? '0 24px 80px rgba(0,0,0,0.8)' : 'none', transition: 'border-radius 300ms' }}
+                title="Preview" />
             </div>
           </div>
 
           {showChat && (
-            <div style={{ width: '360px', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0d0d0d', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div style={{ width: '340px', flexShrink: 0, borderLeft: '1px solid var(--border)', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: '0.9rem', color: '#ffffff', marginBottom: '0.1rem' }}>AI Revision</p>
-                  <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>Tell the AI what to change</p>
+                  <Label style={{ display: 'block', marginBottom: '0.25rem' }}>AI REVISION</Label>
+                  <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.8rem', color: 'var(--muted)' }}>Tell the AI what to change</p>
                 </div>
-                <button onClick={() => setShowChat(false)}
-                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '1rem', padding: '0.25rem', lineHeight: 1, transition: 'color 150ms' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#ffffff')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}>
-                  ✕
-                </button>
+                <button onClick={() => setShowChat(false)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
               </div>
-
               <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {chatLog.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-                    <p style={{ fontSize: '1.75rem', marginBottom: '0.875rem', opacity: 0.6 }}>✦</p>
-                    <p style={{ fontFamily: "'Syne', sans-serif", fontSize: '0.875rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: '0.625rem' }}>What would you like to change?</p>
-                    <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.75rem', color: 'rgba(255,255,255,0.2)', lineHeight: 1.7 }}>
-                      Try:<br />
-                      "Make the hero section darker"<br />
-                      "Add a pricing section"<br />
-                      "Change the accent color to blue"<br />
-                      "Rewrite the copy for lawyers"
+                  <div style={{ padding: '3rem 0', textAlign: 'center' }}>
+                    <p style={{ fontFamily: 'var(--f-label)', fontSize: '3rem', color: 'var(--border2)', marginBottom: '1rem' }}>✦</p>
+                    <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.825rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+                      "Make the hero darker"<br />"Add a pricing section"<br />"Change font to serif"<br />"Rewrite copy for lawyers"
                     </p>
                   </div>
                 )}
-                {chatLog.map((msg, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: msg.from === 'user' ? 'flex-end' : 'flex-start' }}>
-                    <div style={{ maxWidth: '85%', padding: '0.625rem 0.875rem', borderRadius: msg.from === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', backgroundColor: msg.from === 'user' ? '#C8FF00' : '#1a1a1a', color: msg.from === 'user' ? '#000000' : '#ffffff', fontFamily: "'Inter', sans-serif", fontSize: '0.825rem', lineHeight: 1.5, border: msg.from === 'ai' ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                      {msg.text}
+                {chatLog.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: m.from === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ maxWidth: '88%', padding: '0.6rem 0.875rem', borderRadius: m.from === 'user' ? '10px 10px 2px 10px' : '10px 10px 10px 2px', backgroundColor: m.from === 'user' ? 'var(--accent)' : 'var(--surface2)', color: m.from === 'user' ? '#000' : 'var(--text)', fontFamily: 'var(--f-body)', fontSize: '0.8rem', lineHeight: 1.5, border: m.from === 'ai' ? '1px solid var(--border)' : 'none' }}>
+                      {m.text}
                     </div>
                   </div>
                 ))}
                 {isRevising && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    <div style={{ padding: '0.75rem 1rem', borderRadius: '12px 12px 12px 2px', backgroundColor: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '5px', alignItems: 'center' }}>
-                      {[0, 1, 2].map(i => (
-                        <div key={i} style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#C8FF00', animation: `chatpulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-                      ))}
-                      <style>{`@keyframes chatpulse { 0%,80%,100%{opacity:0.3;transform:scale(0.85)}40%{opacity:1;transform:scale(1.15)} }`}</style>
-                    </div>
+                  <div style={{ display: 'flex', gap: '5px', padding: '0.75rem 1rem', backgroundColor: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px 10px 10px 2px', width: 'fit-content' }}>
+                    {[0,1,2].map(i => <div key={i} style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--accent)', animation: `pulse 1.2s ${i*0.2}s ease-in-out infinite` }} />)}
                   </div>
                 )}
                 <div ref={chatEndRef} />
               </div>
-
-              <div style={{ padding: '0.875rem', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+              <div style={{ padding: '0.875rem', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                  <textarea
-                    value={revisionInput}
-                    onChange={(e) => setRevisionInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRevision() } }}
-                    placeholder="Make the hero section darker…"
-                    rows={2}
-                    style={{ flex: 1, backgroundColor: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.625rem 0.875rem', color: '#ffffff', fontSize: '0.825rem', outline: 'none', resize: 'none', fontFamily: "'Inter', sans-serif", lineHeight: 1.5, transition: 'border-color 200ms' }}
-                    onFocus={(e) => (e.target.style.borderColor = 'rgba(200,255,0,0.4)')}
-                    onBlur={(e)  => (e.target.style.borderColor = 'rgba(255,255,255,0.08)')}
-                  />
-                  <button onClick={handleRevision} disabled={!revisionInput.trim() || isRevising}
-                    style={{ width: '38px', height: '38px', borderRadius: '10px', border: 'none', flexShrink: 0, backgroundColor: revisionInput.trim() && !isRevising ? '#C8FF00' : 'rgba(200,255,0,0.12)', color: revisionInput.trim() && !isRevising ? '#000' : 'rgba(200,255,0,0.35)', cursor: revisionInput.trim() && !isRevising ? 'pointer' : 'not-allowed', fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 200ms' }}>
-                    ↑
-                  </button>
+                  <textarea value={revInput} onChange={e => setRevInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRevision() } }}
+                    placeholder="Describe the change…" rows={2}
+                    style={{ flex: 1, backgroundColor: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.875rem', color: 'var(--text)', fontSize: '0.8rem', outline: 'none', resize: 'none', fontFamily: 'var(--f-body)', lineHeight: 1.5, transition: 'border-color 200ms' }}
+                    onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                    onBlur={e  => (e.target.style.borderColor = 'var(--border)')} />
+                  <button onClick={handleRevision} disabled={!revInput.trim() || isRevising}
+                    style={{ width: '36px', height: '36px', borderRadius: '8px', border: 'none', flexShrink: 0, backgroundColor: revInput.trim() && !isRevising ? 'var(--accent)' : 'var(--accent-dim)', color: revInput.trim() && !isRevising ? '#000' : 'rgba(232,255,71,0.3)', cursor: revInput.trim() && !isRevising ? 'pointer' : 'not-allowed', fontWeight: 900, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 200ms' }}>↑</button>
                 </div>
-                <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.65rem', color: 'rgba(255,255,255,0.18)', marginTop: '0.5rem', textAlign: 'center' }}>
-                  Enter to send · Shift+Enter for new line
-                </p>
+                <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.62rem', color: 'var(--muted)', marginTop: '0.4rem', textAlign: 'center', opacity: 0.5 }}>Enter to send · Shift+Enter for new line</p>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {showDeploy && <DeployModal businessName={businessName} onClose={() => setShowDeploy(false)} />}
+      {showDeploy && (
+        <DeployModal
+          businessName={businessName}
+          html={currentCode}
+          projectId={projectId}
+          onClose={() => setShowDeploy(false)}
+        />
+      )}
     </>
   )
 }
 
-/* ── Main Page ───────────────────────────────────────────────── */
+// ─── Main builder page ────────────────────────────────────────────────────────
 export default function BuilderPage() {
-  const params   = useParams()
-  const router   = useRouter()
-  const template = params.template as string
+  const params       = useParams()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const template     = params.template as string
 
-  const [step,           setStep]           = useState(1)
-  const [businessName,   setBusinessName]   = useState('')
+  const TOTAL_STEPS = 6
+
+  const [step,           setStep]           = useState(() => searchParams.get('business_name') ? 2 : 1)
+  const [businessName,   setBusinessName]   = useState(searchParams.get('business_name') ?? '')
   const [offering,       setOffering]       = useState('')
+  const [city,           setCity]           = useState(searchParams.get('city') ?? '')
   const [targetCustomer, setTargetCustomer] = useState('')
   const [goal,           setGoal]           = useState('')
   const [brandFeel,      setBrandFeel]      = useState('')
@@ -558,236 +591,187 @@ export default function BuilderPage() {
   const [currentState,   setCurrentState]   = useState<object | null>(null)
   const [readyCount,     setReadyCount]     = useState(0)
   const [isError,        setIsError]        = useState(false)
+  const [errorMessage,   setErrorMessage]   = useState('')
+  const [projectId,      setProjectId]      = useState<string | null>(null)
+  const [previewToken,   setPreviewToken]   = useState<string | null>(null)
 
-  const headerRef = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    if (!headerRef.current) return
-    gsap.fromTo(headerRef.current, { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' })
-  }, [])
+  const navRef = useRef<HTMLElement>(null)
+  useEffect(() => { gsap.fromTo(navRef.current, { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out' }) }, [])
 
   const generateOne = async (): Promise<{ html: string; state: object }> => {
+    const { data: { session } } = await supabase.auth.getSession()
     const res  = await fetch('/api/generate', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ businessName, offering, targetCustomer, goal, brandFeel, template }),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({ businessName, offering, city, targetCustomer, goal, brandFeel, template }),
     })
     const data = await res.json()
-    setReadyCount(prev => prev + 1)
+    if (res.status === 403 && data.error === 'limit_reached') throw new Error(data.message)
+    setReadyCount(p => p + 1)
     return { html: data.html, state: data.state }
   }
+  
 
   const handleGenerate = async () => {
-    setIsError(false)
-    setStep(6)
-    setReadyCount(0)
+    setIsError(false); setStep(7); setReadyCount(0)
     try {
-      const results = await Promise.all([generateOne(), generateOne(), generateOne()])
+      const results = await Promise.all([generateOne(), generateOne()])
       setVariations(results.map(r => r.html))
-      // Store state from first variation (all 3 share the same brief/state)
       setCurrentState(results[0].state)
-      setStep(7)
-    } catch (err) {
-      console.error(err)
-      setIsError(true)
-      setStep(5)
+      setStep(8)
+    } catch (err: any) {
+      console.error(err); setIsError(true); setStep(6)
+      if (err?.message) setErrorMessage(err.message)
     }
   }
 
   const handlePick = async (html: string) => {
-    setGeneratedCode(html)
-    setStep(8)
-
-    // Save to Supabase in the background
+    setGeneratedCode(html); setStep(9)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return
-      await fetch('/api/projects/save', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name:     businessName,
-          template,
-          html,
-          state:    currentState,
-          userId:   session.user.id,
-        }),
-      })
-    } catch (err) {
-      console.error('Save failed silently:', err)
-    }
+      const res   = await fetch('/api/projects/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: businessName, city, template, html, state: currentState, userId: session.user.id, offering, targetCustomer, goal, brandFeel }) })
+      const saved = await res.json()
+      if (saved.project?.id)            setProjectId(saved.project.id)
+      if (saved.project?.preview_token) setPreviewToken(saved.project.preview_token)
+    } catch (err) { console.error('Save failed silently:', err) }
   }
 
   const handleReset = () => {
-    setStep(1)
-    setGeneratedCode('')
-    setVariations([])
-    setBusinessName('')
-    setOffering('')
-    setTargetCustomer('')
-    setGoal('')
-    setBrandFeel('')
-    setCurrentState(null)
-    setReadyCount(0)
-    setIsError(false)
+    setStep(1); setGeneratedCode(''); setVariations([]); setBusinessName(''); setOffering(''); setCity(''); setTargetCustomer(''); setGoal(''); setBrandFeel(''); setCurrentState(null); setReadyCount(0); setIsError(false); setProjectId(null); setPreviewToken(null)
   }
 
-  if (step === 8 && generatedCode) {
-    return <BuilderView generatedCode={generatedCode} businessName={businessName} template={template} onReset={handleReset} />
-  }
-
-  if (step === 7 && variations.length === 3) {
-    return <VariationPicker variations={variations} onPick={handlePick} onRegenerate={handleGenerate} />
-  }
+  if (step === 9 && generatedCode)           return <><style>{FONTS}</style><BuilderView generatedCode={generatedCode} businessName={businessName} template={template} onReset={handleReset} projectId={projectId} previewToken={previewToken} /></>
+  if (step === 8 && variations.length === 2) return <><style>{FONTS}</style><VariationPicker variations={variations} onPick={handlePick} onRegenerate={handleGenerate} /></>
+  if (step === 7)                            return <><style>{FONTS}</style><LoadingView count={readyCount} /></>
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a', color: '#ffffff' }}>
-      <nav ref={headerRef} style={{ position: 'sticky', top: 0, zIndex: 50, opacity: 0, borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '1.125rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backdropFilter: 'blur(24px)', backgroundColor: 'rgba(10,10,10,0.88)' }}>
-        <h1 style={{ fontSize: '1.5rem', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', cursor: 'pointer' }} onClick={() => router.push('/')}>
-          NOV<span style={{ color: '#C8FF00' }}>UX</span>
-        </h1>
-        <MagneticBtn variant="ghost" onClick={() => router.push('/templates')}>← Templates</MagneticBtn>
+    <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text)' }}>
+      <style>{FONTS}</style>
+      <nav ref={navRef} style={{ position: 'sticky', top: 0, zIndex: 50, opacity: 0, borderBottom: '1px solid var(--border)', padding: '1rem 2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backdropFilter: 'blur(20px)', backgroundColor: 'rgba(5,5,5,0.9)' }}>
+        <span style={{ fontFamily: 'var(--f-label)', fontSize: '1.3rem', letterSpacing: '0.06em', cursor: 'pointer' }} onClick={() => router.push('/')}>
+          NOV<span style={{ color: 'var(--accent)' }}>UX</span>
+        </span>
+        <Btn variant="ghost" size="sm" onClick={() => router.push('/templates')}>← Templates</Btn>
       </nav>
 
-      <main style={{ maxWidth: '600px', margin: '0 auto', padding: '5rem 2rem 8rem' }}>
-        {step <= 5 && <ProgressBar current={step} total={5} />}
+      <main style={{ maxWidth: '680px', margin: '0 auto', padding: '5rem 2rem 10rem' }}>
+        {step <= TOTAL_STEPS && <StepRail current={step} total={TOTAL_STEPS} />}
 
         {step === 1 && (
-          <StepPanel>
+          <StepPanel stepNum={1}>
             <div>
-              <div style={{ width: '36px', height: '3px', backgroundColor: '#C8FF00', borderRadius: '99px', marginBottom: '1.5rem' }} />
-              <p style={{ color: '#C8FF00', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Step 1 of 5</p>
-              <h2 style={{ fontSize: 'clamp(2rem,6vw,3.5rem)', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: '1rem' }}>
-                What's your<br />business called?
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem', lineHeight: 1.6 }}>This will appear throughout your website.</p>
+              <Label style={{ display: 'block', marginBottom: '1rem' }}>BUSINESS NAME</Label>
+              <Rule style={{ marginBottom: '1.75rem' }} />
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.25rem,6vw,4rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, marginBottom: '1rem' }}>What's your<br />business called?</h2>
+              <p style={{ fontFamily: 'var(--f-body)', color: 'var(--muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>This appears throughout your website — headers, footers, metadata.</p>
             </div>
-            <input autoFocus type="text" value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && businessName && setStep(2)}
-              placeholder="e.g. Nova Studio, John's Bakery…"
-              style={{ width: '100%', backgroundColor: '#111111', border: `1px solid ${businessName ? '#C8FF00' : 'rgba(255,255,255,0.08)'}`, borderRadius: '12px', padding: '1rem 1.25rem', color: '#ffffff', fontSize: '1.0625rem', outline: 'none', fontFamily: "'Inter',sans-serif", transition: 'border-color 200ms', boxSizing: 'border-box' }}
-            />
-            <MagneticBtn variant="accent" fullWidth size="lg" disabled={!businessName} onClick={() => setStep(2)}>
-              Continue →
-            </MagneticBtn>
+            <Input autoFocus value={businessName} onChange={setBusinessName} onKeyDown={e => e.key === 'Enter' && businessName && setStep(2)} placeholder="e.g. Nova Studio, John's Bakery, Pulse Agency…" />
+            <Btn variant="accent" size="lg" fullWidth disabled={!businessName} onClick={() => setStep(2)}>Continue →</Btn>
           </StepPanel>
         )}
 
         {step === 2 && (
-          <StepPanel>
+          <StepPanel stepNum={2}>
             <div>
-              <div style={{ width: '36px', height: '3px', backgroundColor: '#C8FF00', borderRadius: '99px', marginBottom: '1.5rem' }} />
-              <p style={{ color: '#C8FF00', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Step 2 of 5</p>
-              <h2 style={{ fontSize: 'clamp(2rem,6vw,3.5rem)', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: '1rem' }}>
-                What do you<br />offer?
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem', lineHeight: 1.6 }}>Products, services, skills — anything.</p>
+              <Label style={{ display: 'block', marginBottom: '1rem' }}>YOUR OFFERING</Label>
+              <Rule style={{ marginBottom: '1.75rem' }} />
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.25rem,6vw,4rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, marginBottom: '1rem' }}>What do<br />you offer?</h2>
+              <p style={{ fontFamily: 'var(--f-body)', color: 'var(--muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>Products, services, skills — be as specific as you like.</p>
             </div>
-            <textarea autoFocus value={offering}
-              onChange={(e) => setOffering(e.target.value)}
-              placeholder="e.g. Premium haircuts and beard styling for men in Abuja…"
-              rows={4}
-              onFocus={(e) => (e.target.style.borderColor = '#C8FF00')}
-              onBlur={(e)  => (e.target.style.borderColor = offering ? '#C8FF00' : 'rgba(255,255,255,0.08)')}
-              style={{ width: '100%', backgroundColor: '#111111', border: `1px solid ${offering ? '#C8FF00' : 'rgba(255,255,255,0.08)'}`, borderRadius: '12px', padding: '1rem 1.25rem', color: '#ffffff', fontSize: '1.0625rem', outline: 'none', resize: 'none', fontFamily: "'Inter',sans-serif", lineHeight: 1.6, boxSizing: 'border-box', transition: 'border-color 200ms' }}
-            />
+            <Textarea value={offering} onChange={setOffering} placeholder="e.g. Premium haircuts and beard grooming for men. Walk-ins welcome, card payments accepted…" rows={4} />
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <MagneticBtn variant="ghost" fullWidth size="lg" onClick={() => setStep(1)}>← Back</MagneticBtn>
-              <MagneticBtn variant="accent" fullWidth size="lg" disabled={!offering} onClick={() => setStep(3)}>Continue →</MagneticBtn>
+              <Btn variant="ghost" size="lg" fullWidth onClick={() => setStep(1)}>← Back</Btn>
+              <Btn variant="accent" size="lg" fullWidth disabled={!offering} onClick={() => setStep(3)}>Continue →</Btn>
             </div>
           </StepPanel>
         )}
 
         {step === 3 && (
-          <StepPanel>
+          <StepPanel stepNum={3}>
             <div>
-              <div style={{ width: '36px', height: '3px', backgroundColor: '#C8FF00', borderRadius: '99px', marginBottom: '1.5rem' }} />
-              <p style={{ color: '#C8FF00', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Step 3 of 5</p>
-              <h2 style={{ fontSize: 'clamp(2rem,6vw,3.5rem)', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: '1rem' }}>
-                Who's your<br />customer?
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem', lineHeight: 1.6 }}>The AI tailors design and copy specifically for them.</p>
+              <Label style={{ display: 'block', marginBottom: '1rem' }}>LOCATION</Label>
+              <Rule style={{ marginBottom: '1.75rem' }} />
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.25rem,6vw,4rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, marginBottom: '1rem' }}>Where are<br />you based?</h2>
+              <p style={{ fontFamily: 'var(--f-body)', color: 'var(--muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>The AI writes copy that resonates with your local market.</p>
             </div>
-            <input autoFocus type="text" value={targetCustomer}
-              onChange={(e) => setTargetCustomer(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && targetCustomer && setStep(4)}
-              placeholder="e.g. University students in Abuja aged 18–25…"
-              style={{ width: '100%', backgroundColor: '#111111', border: `1px solid ${targetCustomer ? '#C8FF00' : 'rgba(255,255,255,0.08)'}`, borderRadius: '12px', padding: '1rem 1.25rem', color: '#ffffff', fontSize: '1.0625rem', outline: 'none', fontFamily: "'Inter',sans-serif", transition: 'border-color 200ms', boxSizing: 'border-box' }}
-            />
+            <Input autoFocus value={city} onChange={setCity} onKeyDown={e => e.key === 'Enter' && city && setStep(4)} placeholder="e.g. Lagos, London, Dubai, New York…" />
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <MagneticBtn variant="ghost" fullWidth size="lg" onClick={() => setStep(2)}>← Back</MagneticBtn>
-              <MagneticBtn variant="accent" fullWidth size="lg" disabled={!targetCustomer} onClick={() => setStep(4)}>Continue →</MagneticBtn>
+              <Btn variant="ghost" size="lg" fullWidth onClick={() => setStep(2)}>← Back</Btn>
+              <Btn variant="accent" size="lg" fullWidth disabled={!city} onClick={() => setStep(4)}>Continue →</Btn>
             </div>
           </StepPanel>
         )}
 
         {step === 4 && (
-          <StepPanel>
+          <StepPanel stepNum={4}>
             <div>
-              <div style={{ width: '36px', height: '3px', backgroundColor: '#C8FF00', borderRadius: '99px', marginBottom: '1.5rem' }} />
-              <p style={{ color: '#C8FF00', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Step 4 of 5</p>
-              <h2 style={{ fontSize: 'clamp(2rem,6vw,3.5rem)', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: '1rem' }}>
-                What's the<br />main goal?
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem', lineHeight: 1.6 }}>This shapes layout, CTAs, and copywriting.</p>
+              <Label style={{ display: 'block', marginBottom: '1rem' }}>TARGET CUSTOMER</Label>
+              <Rule style={{ marginBottom: '1.75rem' }} />
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.25rem,6vw,4rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, marginBottom: '1rem' }}>Who's your<br />customer?</h2>
+              <p style={{ fontFamily: 'var(--f-body)', color: 'var(--muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>The AI tailors every design decision and line of copy to them.</p>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-              {[
-                { label: 'Get calls & enquiries',    emoji: '📞' },
-                { label: 'Sell products online',      emoji: '🛒' },
-                { label: 'Build trust & credibility', emoji: '🏆' },
-                { label: 'Showcase my work',          emoji: '✦'  },
-              ].map((opt) => (
-                <SelectCard key={opt.label} label={opt.label} emoji={opt.emoji}
-                  active={goal === opt.label} onClick={() => setGoal(opt.label)} />
-              ))}
-            </div>
+            <Input autoFocus value={targetCustomer} onChange={setTargetCustomer} onKeyDown={e => e.key === 'Enter' && targetCustomer && setStep(5)} placeholder="e.g. Young professionals aged 25–40 looking for premium grooming…" />
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <MagneticBtn variant="ghost" fullWidth size="lg" onClick={() => setStep(3)}>← Back</MagneticBtn>
-              <MagneticBtn variant="accent" fullWidth size="lg" disabled={!goal} onClick={() => setStep(5)}>Continue →</MagneticBtn>
+              <Btn variant="ghost" size="lg" fullWidth onClick={() => setStep(3)}>← Back</Btn>
+              <Btn variant="accent" size="lg" fullWidth disabled={!targetCustomer} onClick={() => setStep(5)}>Continue →</Btn>
             </div>
           </StepPanel>
         )}
 
         {step === 5 && (
-          <StepPanel>
+          <StepPanel stepNum={5}>
             <div>
-              <div style={{ width: '36px', height: '3px', backgroundColor: '#C8FF00', borderRadius: '99px', marginBottom: '1.5rem' }} />
-              <p style={{ color: '#C8FF00', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Step 5 of 5</p>
-              <h2 style={{ fontSize: 'clamp(2rem,6vw,3.5rem)', fontFamily: "'Syne',sans-serif", fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: '1rem' }}>
-                What's your<br />brand feel?
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem', lineHeight: 1.6 }}>Sets the visual tone of your entire site.</p>
+              <Label style={{ display: 'block', marginBottom: '1rem' }}>PRIMARY GOAL</Label>
+              <Rule style={{ marginBottom: '1.75rem' }} />
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.25rem,6vw,4rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, marginBottom: '1rem' }}>What's the<br />main goal?</h2>
+              <p style={{ fontFamily: 'var(--f-body)', color: 'var(--muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>Shapes the layout, call-to-actions, and copywriting structure.</p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
               {[
-                { label: 'Bold & powerful',          emoji: '⚡' },
-                { label: 'Minimal & clean',          emoji: '◻' },
-                { label: 'Elegant & premium',        emoji: '💎' },
-                { label: 'Playful & friendly',       emoji: '🎨' },
-                { label: 'Professional & corporate', emoji: '🏢' },
-              ].map((opt) => (
-                <SelectCard key={opt.label} label={opt.label} emoji={opt.emoji}
-                  active={brandFeel === opt.label} onClick={() => setBrandFeel(opt.label)} />
-              ))}
+                { label: 'Get calls & enquiries',    sub: 'Phone CTA, contact forms, hours' },
+                { label: 'Sell products online',      sub: 'Product grid, cart, checkout flow' },
+                { label: 'Build trust & credibility', sub: 'Testimonials, credentials, about' },
+                { label: 'Showcase my work',          sub: 'Portfolio grid, case studies' },
+              ].map(opt => <SelectCard key={opt.label} label={opt.label} sub={opt.sub} active={goal === opt.label} onClick={() => setGoal(opt.label)} />)}
             </div>
-            {isError && (
-              <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.825rem', color: '#ef4444', textAlign: 'center', padding: '0.75rem', backgroundColor: 'rgba(239,68,68,0.08)', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.15)' }}>
-                Generation failed. Check your API credits and try again.
-              </p>
-            )}
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <MagneticBtn variant="ghost" fullWidth size="lg" onClick={() => setStep(4)}>← Back</MagneticBtn>
-              <MagneticBtn variant="accent" fullWidth size="lg" disabled={!brandFeel} onClick={handleGenerate}>
-                Generate 3 Variations ✦
-              </MagneticBtn>
+              <Btn variant="ghost" size="lg" fullWidth onClick={() => setStep(4)}>← Back</Btn>
+              <Btn variant="accent" size="lg" fullWidth disabled={!goal} onClick={() => setStep(6)}>Continue →</Btn>
             </div>
           </StepPanel>
         )}
 
-        {step === 6 && <LoadingStep count={readyCount} />}
+        {step === 6 && (
+          <StepPanel stepNum={6}>
+            <div>
+              <Label style={{ display: 'block', marginBottom: '1rem' }}>BRAND FEEL</Label>
+              <Rule style={{ marginBottom: '1.75rem' }} />
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 'clamp(2.25rem,6vw,4rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 0.95, marginBottom: '1rem' }}>What's your<br />brand feel?</h2>
+              <p style={{ fontFamily: 'var(--f-body)', color: 'var(--muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>Sets the visual tone — typography, color palette, motion style.</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              {[
+                { label: 'Bold & powerful',          sub: 'Heavy type, strong contrast, energy' },
+                { label: 'Minimal & clean',          sub: 'Whitespace, restraint, clarity' },
+                { label: 'Elegant & premium',        sub: 'Refined, serif, considered luxury' },
+                { label: 'Playful & friendly',       sub: 'Warm, rounded, approachable' },
+                { label: 'Professional & corporate', sub: 'Trustworthy, structured, formal' },
+              ].map(opt => <SelectCard key={opt.label} label={opt.label} sub={opt.sub} active={brandFeel === opt.label} onClick={() => setBrandFeel(opt.label)} />)}
+            </div>
+            {isError && (
+              <div style={{ padding: '0.875rem 1.25rem', backgroundColor: 'rgba(255,77,77,0.06)', border: '1px solid rgba(255,77,77,0.18)', borderRadius: '10px' }}>
+                <p style={{ fontFamily: 'var(--f-body)', fontSize: '0.825rem', color: 'var(--danger)' }}>{errorMessage || 'Generation failed. Check your API credits and try again.'}</p>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <Btn variant="ghost" size="lg" fullWidth onClick={() => setStep(5)}>← Back</Btn>
+              <Btn variant="accent" size="lg" fullWidth disabled={!brandFeel} onClick={handleGenerate}>Generate 2 Variations ✦</Btn>
+            </div>
+          </StepPanel>
+        )}
       </main>
     </div>
-  )
-}
