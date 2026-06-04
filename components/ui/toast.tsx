@@ -57,7 +57,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
   return (
     <div
       ref={(node) => {
-        // @ts-expect-error – dual ref
+      
         ref.current = node
         nodeRef(node)
       }}
