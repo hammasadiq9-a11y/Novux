@@ -52,34 +52,7 @@ async function ensureProject(slug: string): Promise<{ ok: boolean; error?: strin
 }
 
 // Deploy HTML as a Cloudflare Pages Direct Upload
-async function deployHTML(slug: string, html: string): Promise<{ ok: boolean; url?: string; error?: string }> {
-  // Step 1 — create a deployment upload
-  const uploadRes = await fetch(`${CF_BASE}/pages/projects/${slug}/deployments`, {
-    method:  'POST',
-    headers: { 'Authorization': `Bearer ${CF_TOKEN}` },
-    // Multipart form with the HTML file
-    body: (() => {
-      const form = new FormData()
-      const manifest = JSON.stringify({ '/index.html': await hashString(html) })
-      form.append('manifest', manifest)
-      form.append('files', new Blob([html], { type: 'text/html' }), 'index.html')
-      return form
-    })(),
-  })
 
-  if (!uploadRes.ok) {
-    const err = await uploadRes.json().catch(() => ({}))
-    return { ok: false, error: err.errors?.[0]?.message ?? 'Upload failed' }
-  }
-
-  const uploadData = await uploadRes.json()
-  const deployId   = uploadData.result?.id
-
-  if (!deployId) return { ok: false, error: 'No deployment ID returned' }
-
-  const url = `https://${slug}.pages.dev`
-  return { ok: true, url }
-}
 
 // Simple hash for CF manifest (sha256 hex)
 async function hashString(str: string): Promise<string> {

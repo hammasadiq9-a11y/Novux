@@ -10,11 +10,10 @@ export async function POST(req: NextRequest) {
     template,
     businessDescription,
     city,
-    reviews,   // ← real Google reviews from Lead Finder
+    reviews,
   } = await req.json()
 
   if (!businessName) {
-    if (!businessName) {
     return NextResponse.json({ error: 'businessName is required' }, { status: 400 })
   }
 
@@ -56,10 +55,6 @@ export async function POST(req: NextRequest) {
     .update({ generations_used: (profile.generations_used ?? 0) + 1 })
     .eq('id', user.id)
   // ─────────────────────────────────────────────────────────────────────────────
-
-  const state = {
-    return NextResponse.json({ error: 'businessName is required' }, { status: 400 })
-  }
 
   const state = {
     brief: {

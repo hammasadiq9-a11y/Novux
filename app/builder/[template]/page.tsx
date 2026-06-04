@@ -775,3 +775,5 @@ export default function BuilderPage() {
         )}
       </main>
     </div>
+  )
+}
