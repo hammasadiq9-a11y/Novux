@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -201,7 +201,7 @@ function FilterPill({ label, active, onClick, count }: {
   )
 }
 
-export default function TemplatesPage() {
+function TemplatesPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const navRef       = useRef<HTMLElement>(null)
@@ -342,3 +342,11 @@ export default function TemplatesPage() {
     </div>
   )
 }
+export default function TemplatesPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <TemplatesPage />
+    </Suspense>
+  )
+}
+export const dynamic = 'force-dynamic'
