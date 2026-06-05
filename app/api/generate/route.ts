@@ -343,7 +343,61 @@ Always use real Unsplash photo IDs relevant to the business. Never use source.un
 
 ---
 
-GSAP ANIMATION SYSTEM — IMPLEMENT ALL
+GSAP ANIMATION SYSTEM — PRESET LIBRARY
+
+You have access to these vetted, battle-tested animation presets.
+Select the ones that match the brand feel. Never write raw GSAP from scratch.
+
+PRESET: fade-up-stagger
+Use for: text blocks, service cards, about sections
+Code: gsap.from(els, { opacity:0, y:60, duration:0.8, stagger:0.12, ease:'power3.out', scrollTrigger:{ trigger:els[0], start:'top 85%' }})
+
+PRESET: hero-word-split
+Use for: hero headlines only
+Code: gsap.from(words, { opacity:0, y:'100%', duration:0.9, stagger:0.08, ease:'power4.out' }) — wrap each word in overflow:hidden span
+
+PRESET: image-wipe
+Use for: about section image reveal
+Code: gsap.from(overlay, { scaleX:1, duration:1.2, ease:'power4.inOut', transformOrigin:'right', scrollTrigger:{ trigger:img, start:'top 80%' }})
+
+PRESET: count-up
+Use for: stats and numbers
+Code: gsap.from(obj, { innerText:0, duration:2, snap:{ innerText:1 }, ease:'power2.out', scrollTrigger:{ trigger:el, start:'top 85%' }})
+
+PRESET: card-lift
+Use for: hover on service cards
+Code: el.addEventListener('mouseenter', ()=> gsap.to(el, { y:-8, boxShadow:'0 20px 40px rgba(0,0,0,0.15)', duration:0.3, ease:'power2.out' }))
+
+PRESET: magnetic-button
+Use for: CTA buttons on desktop only
+Code: Track mousemove, gsap.to(btn, { x: (e.clientX - rect.left - rect.width/2) * 0.3, y: (e.clientY - rect.top - rect.height/2) * 0.3, duration:0.3, ease:'power2.out' })
+
+PRESET: nav-fade
+Use for: navigation on page load
+Code: gsap.from(nav, { opacity:0, y:-20, duration:0.6, ease:'power2.out', delay:0.2 })
+
+PRESET: marquee-trust
+Use for: trust bar infinite scroll
+Code: CSS animation only — @keyframes marquee { from { transform:translateX(0) } to { transform:translateX(-50%) } } — no GSAP needed
+
+PRESET: parallax-hero
+Use for: hero background image
+Code: gsap.to(heroImg, { yPercent:30, ease:'none', scrollTrigger:{ trigger:hero, start:'top top', end:'bottom top', scrub:true }})
+
+PRESET: mobile-menu
+Use for: hamburger menu open/close
+Code: gsap.to(mobileMenu, { opacity:1, y:0, duration:0.4, ease:'power3.out' }) — stagger links inside
+
+BRAND FEEL → PRESET MAPPING (always follow this):
+- Modern & minimal → fade-up-stagger, nav-fade, parallax-hero
+- Bold & energetic → hero-word-split, card-lift, magnetic-button, count-up
+- Luxury & premium → hero-word-split, image-wipe, parallax-hero, magnetic-button
+- Warm & local → fade-up-stagger, count-up, marquee-trust
+- Tech & clean → fade-up-stagger, card-lift, magnetic-button, nav-fade
+- Creative & expressive → hero-word-split, image-wipe, card-lift, magnetic-button
+
+Always include: nav-fade, mobile-menu, marquee-trust on every site regardless of brand feel.
+Always include: hero-word-split on every hero regardless of brand feel.
 
 Page load sequence:
 - Nav fades in from top
@@ -426,17 +480,24 @@ Every section must have its data-section attribute. Start with <!DOCTYPE html> a
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'anthropic-version': '2023-06-01',
-        'x-api-key':         process.env.ANTHROPIC_API_KEY!,
-      },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
-        max_tokens: 16000,
-        system:     systemPrompt,
-        messages:   [{ role: 'user', content: userPrompt }],
-      }),
+     headers: {
+  'Content-Type':      'application/json',
+  'anthropic-version': '2023-06-01',
+  'anthropic-beta':    'prompt-caching-2024-07-31',
+  'x-api-key':         process.env.ANTHROPIC_API_KEY!,
+},
+body: JSON.stringify({
+  model:      'claude-sonnet-4-20250514',
+  max_tokens: 16000,
+  system: [
+    {
+      type: 'text',
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' },
+    }
+  ],
+  messages: [{ role: 'user', content: userPrompt }],
+}),
     })
 
     if (!response.ok) {
